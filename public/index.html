@@ -18,6 +18,8 @@
         .container {
             text-align: center;
             padding: 2rem;
+            width: 100%;
+            max-width: 700px;
         }
         .logo {
             font-size: 4rem;
@@ -35,14 +37,13 @@
         }
         .search-box {
             display: flex;
-            max-width: 600px;
-            margin: 0 auto;
             background: rgba(255,255,255,0.08);
             backdrop-filter: blur(10px);
             border-radius: 50px;
             padding: 0.5rem 1rem;
             border: 1px solid rgba(255,255,255,0.15);
             transition: border-color 0.3s;
+            margin-bottom: 2rem;
         }
         .search-box:focus-within {
             border-color: #38bdf8;
@@ -73,32 +74,50 @@
             color: #0f172a;
             font-size: 1.3rem;
             font-weight: bold;
+            flex-shrink: 0;
         }
         .search-box button:hover {
             background: #0ea5e9;
         }
         .results {
-            margin-top: 2rem;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
             text-align: left;
         }
         .result-item {
             background: rgba(255,255,255,0.05);
             border-radius: 12px;
-            padding: 1rem;
+            padding: 1.2rem;
             margin-bottom: 0.75rem;
             backdrop-filter: blur(5px);
+            transition: background 0.2s;
         }
-        .result-item a {
+        .result-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .result-item h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.4rem;
+        }
+        .result-item h3 a {
             color: #38bdf8;
             text-decoration: none;
-            font-weight: 500;
         }
-        .result-item p {
+        .result-item h3 a:hover {
+            text-decoration: underline;
+        }
+        .result-link {
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+            word-break: break-all;
+        }
+        .result-snippet {
             color: #cbd5e1;
-            margin-top: 0.25rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        .status {
+            margin-top: 1rem;
+            color: #64748b;
             font-size: 0.9rem;
         }
         .footer {
@@ -108,10 +127,12 @@
             transform: translateX(-50%);
             color: #475569;
             font-size: 0.85rem;
+            white-space: nowrap;
         }
-        .status {
-            margin-top: 1rem;
-            color: #64748b;
+        .empty {
+            text-align: center;
+            color: #94a3b8;
+            padding: 2rem;
         }
     </style>
 </head>
@@ -142,55 +163,54 @@
             resultsDiv.innerHTML = '';
 
             try {
-                // Запрос к нашему прокси-серверу (избегаем CORS)
                 const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
-                
-                // Если сервер вернул JSON (от DuckDuckGo)
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    const data = await response.json();
-                    displayResults(data);
+                if (!response.ok) throw new Error('Network error');
+                const data = await response.json();
+
+                if (data.results && data.results.length > 0) {
+                    displayResults(data.results);
                 } else {
-                    // Если это редирект на Google (fallback) — показываем ссылку
-                    const html = await response.text();
-                    resultsDiv.innerHTML = `<p>Перенаправление на внешний поиск...</p>`;
-                    window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
+                    resultsDiv.innerHTML = '<div class="empty">Ничего не найдено. Попробуйте другой запрос.</div>';
                 }
-                statusDiv.textContent = '';
             } catch (err) {
-                statusDiv.textContent = 'Ошибка соединения. Попробуйте позже.';
+                resultsDiv.innerHTML = '<div class="empty">Ошибка соединения. Попробуйте позже.</div>';
                 console.error(err);
             }
+            statusDiv.textContent = '';
         }
 
-        function displayResults(data) {
-            if (data.AbstractText) {
-                resultsDiv.innerHTML += `
+        function displayResults(results) {
+            let html = '';
+            results.forEach(r => {
+                html += `
                     <div class="result-item">
-                        <strong>${data.Heading || 'Результат'}</strong>
-                        <p>${data.AbstractText}</p>
-                        ${data.AbstractURL ? `<a href="${data.AbstractURL}" target="_blank">Подробнее</a>` : ''}
+                        <h3><a href="${escapeHTML(r.link)}" target="_blank">${escapeHTML(r.title)}</a></h3>
+                        <div class="result-link">${escapeHTML(r.link)}</div>
+                        <div class="result-snippet">${escapeHTML(r.snippet || '')}</div>
                     </div>
                 `;
-            } else if (data.RelatedTopics && data.RelatedTopics.length) {
-                data.RelatedTopics.slice(0, 5).forEach(topic => {
-                    if (topic.Text) {
-                        resultsDiv.innerHTML += `
-                            <div class="result-item">
-                                <a href="${topic.FirstURL || '#'}" target="_blank">${topic.Text}</a>
-                            </div>
-                        `;
-                    }
-                });
-            } else {
-                resultsDiv.innerHTML = '<p>Ничего не найдено. Попробуйте другой запрос.</p>';
-            }
+            });
+            resultsDiv.innerHTML = html;
+        }
+
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
 
         button.addEventListener('click', performSearch);
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') performSearch();
         });
+
+        // Поддержка быстрого поиска из адресной строки браузера (если передано ?q=...)
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialQuery = urlParams.get('q');
+        if (initialQuery) {
+            input.value = initialQuery;
+            performSearch();
+        }
     </script>
 </body>
 </html>
