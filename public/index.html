@@ -19,7 +19,7 @@
             text-align: center;
             padding: 2rem;
             width: 100%;
-            max-width: 700px;
+            max-width: 720px;
         }
         .logo {
             font-size: 4rem;
@@ -27,7 +27,7 @@
             background: linear-gradient(to right, #38bdf8, #818cf8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.3rem;
             letter-spacing: -1px;
         }
         .subtitle {
@@ -38,11 +38,11 @@
         .search-box {
             display: flex;
             background: rgba(255,255,255,0.08);
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(12px);
             border-radius: 50px;
             padding: 0.5rem 1rem;
             border: 1px solid rgba(255,255,255,0.15);
-            transition: border-color 0.3s;
+            transition: border 0.3s;
             margin-bottom: 2rem;
         }
         .search-box:focus-within {
@@ -70,7 +70,7 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: background 0.2s;
             color: #0f172a;
             font-size: 1.3rem;
             font-weight: bold;
@@ -84,21 +84,22 @@
         }
         .result-item {
             background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 1.2rem;
+            border-radius: 14px;
+            padding: 1.2rem 1.4rem;
             margin-bottom: 0.75rem;
-            backdrop-filter: blur(5px);
-            transition: background 0.2s;
+            backdrop-filter: blur(6px);
+            transition: background 0.2s, transform 0.1s;
         }
         .result-item:hover {
             background: rgba(255,255,255,0.1);
+            transform: translateX(4px);
         }
         .result-item h3 {
             font-size: 1.2rem;
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.25rem;
         }
         .result-item h3 a {
-            color: #38bdf8;
+            color: #7dd3fc;
             text-decoration: none;
         }
         .result-item h3 a:hover {
@@ -106,8 +107,8 @@
         }
         .result-link {
             color: #64748b;
-            font-size: 0.85rem;
-            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+            margin-bottom: 0.4rem;
             word-break: break-all;
         }
         .result-snippet {
@@ -117,7 +118,7 @@
         }
         .status {
             margin-top: 1rem;
-            color: #64748b;
+            color: #94a3b8;
             font-size: 0.9rem;
         }
         .footer {
@@ -126,13 +127,14 @@
             left: 50%;
             transform: translateX(-50%);
             color: #475569;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             white-space: nowrap;
         }
         .empty {
             text-align: center;
             color: #94a3b8;
             padding: 2rem;
+            font-size: 1.1rem;
         }
     </style>
 </head>
@@ -164,16 +166,16 @@
 
             try {
                 const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
-                if (!response.ok) throw new Error('Network error');
+                if (!response.ok) throw new Error('Ошибка сервера');
                 const data = await response.json();
 
                 if (data.results && data.results.length > 0) {
                     displayResults(data.results);
                 } else {
-                    resultsDiv.innerHTML = '<div class="empty">Ничего не найдено. Попробуйте другой запрос.</div>';
+                    resultsDiv.innerHTML = '<div class="empty">Ничего не найдено. Попробуйте изменить запрос.</div>';
                 }
             } catch (err) {
-                resultsDiv.innerHTML = '<div class="empty">Ошибка соединения. Попробуйте позже.</div>';
+                resultsDiv.innerHTML = '<div class="empty">Не удалось выполнить поиск. Проверьте соединение.</div>';
                 console.error(err);
             }
             statusDiv.textContent = '';
@@ -184,7 +186,7 @@
             results.forEach(r => {
                 html += `
                     <div class="result-item">
-                        <h3><a href="${escapeHTML(r.link)}" target="_blank">${escapeHTML(r.title)}</a></h3>
+                        <h3><a href="${escapeHTML(r.link)}" target="_blank" rel="noopener">${escapeHTML(r.title)}</a></h3>
                         <div class="result-link">${escapeHTML(r.link)}</div>
                         <div class="result-snippet">${escapeHTML(r.snippet || '')}</div>
                     </div>
@@ -204,7 +206,7 @@
             if (e.key === 'Enter') performSearch();
         });
 
-        // Поддержка быстрого поиска из адресной строки браузера (если передано ?q=...)
+        // Если в URL передан параметр ?q=..., выполнить поиск сразу
         const urlParams = new URLSearchParams(window.location.search);
         const initialQuery = urlParams.get('q');
         if (initialQuery) {
