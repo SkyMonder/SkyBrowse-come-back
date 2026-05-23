@@ -13,6 +13,13 @@ app.use(express.json());
 // Раздача статики (главная страница)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ВОТ ЭТО ДОБАВЬ:
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Дальше /search, /health и т.д.
+
 // Прокси для поиска – обходит CORS на внешние ресурсы
 app.get('/search', async (req, res) => {
     const query = req.query.q;
