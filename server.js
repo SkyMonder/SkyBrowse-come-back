@@ -15,29 +15,27 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Список надёжных публичных серверов SearXNG (с запасными вариантами)
-// Взято из открытых источников, например: https://github.com/pwilkin/mcp-searxng-public
+// Актуальный список публичных инстансов SearXNG с высоким аптаймом
+// Взят с https://searx.space на 23.05.2026
 const SEARXNG_INSTANCES = [
-    'https://metacat.online',
-    'https://nyc1.sx.ggtyler.dev',
-    'https://ooglester.com',
-    'https://search.080609.xyz',
-    'https://search.canine.tools',
-    'https://search.catboy.house',
-    'https://search.citw.lgbt',
-    'https://search.einfachzocken.eu',
-    'https://search.federicociro.com',
+    'https://searxng.website',
+    'https://search.ctq.ro',
+    'https://search.datenkrake.ch',
+    'https://search.rhscz.eu',
     'https://search.hbubli.cc',
-    'https://search.im-in.space',
-    'https://search.indst.eu'
+    'https://searx.tiekoetter.com',
+    'https://searxng.site',
 ];
 
-// Функция для парсинга HTML-кода и извлечения результатов
+/**
+ * Парсит HTML-код страницы с результатами поиска SearXNG
+ * и извлекает заголовки, ссылки и описания.
+ */
 function parseSearchResults(html) {
     const $ = cheerio.load(html);
     const results = [];
 
-    // Ищем все статьи с результатами (основной селектор для SearXNG)
+    // Ищем статьи с результатами (основной селектор)
     $('article.result').each((i, el) => {
         const titleElement = $(el).find('h3 a').first();
         const link = titleElement.attr('href');
@@ -45,65 +43,81 @@ function parseSearchResults(html) {
         const snippet = $(el).find('.content, .result-content, p').first().text().trim();
 
         if (title && link) {
-            results.push({
-                title: title,
-                link: link,
-                snippet: snippet || ''
-            });
+            results.push({ title, link, snippet: snippet || '' });
         }
     });
 
-    // Запасной вариант: если <article> не найдены, ищем более старые версии вёрстки
+    // Запасной селектор для старых версий SearXNG
     if (results.length === 0) {
         $('.result-default, .result').each((i, el) => {
             const titleElement = $(el).find('h3 a, .result-title a').first();
             const link = titleElement.attr('href');
             const title = titleElement.text().trim();
             const snippet = $(el).find('.result-snippet, .content').first().text().trim();
-
-            if (title && link) {
-                results.push({
-                    title: title,
-                    link: link,
-                    snippet: snippet || ''
-                });
-            }
+            if (title && link) results.push({ title, link, snippet: snippet || '' });
         });
     }
 
     return results;
 }
 
-// Поиск с перебором серверов и парсингом HTML
+/**
+ * Гибридный поиск: сначала пробует JSON API,
+ * при неудаче парсит HTML-версию страницы.
+ */
 async function searchSearXNG(query) {
     for (const instance of SEARXNG_INSTANCES) {
         try {
-            const url = `${instance}/search?q=${encodeURIComponent(query)}`;
             console.log(`Пробуем сервер: ${instance}`);
-            
-            const response = await fetch(url, {
+
+            // --- Попытка 1: запросить JSON (быстрый и чистый метод) ---
+            try {
+                const jsonUrl = `${instance}/search?q=${encodeURIComponent(query)}&format=json`;
+                const jsonResponse = await fetch(jsonUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                });
+
+                if (jsonResponse.ok) {
+                    const data = await jsonResponse.json();
+                    const results = (data.results || []).map(r => ({
+                        title: r.title || 'Без названия',
+                        link: r.url,
+                        snippet: r.content || r.snippet || ''
+                    }));
+                    if (results.length > 0) {
+                        console.log(`Найдено ${results.length} результатов через JSON API на ${instance}`);
+                        return results;
+                    }
+                } else if (jsonResponse.status === 403) {
+                    console.log(`JSON API отключён на ${instance}, пробуем парсить HTML...`);
+                } else {
+                    console.log(`Сервер ${instance} ответил ошибкой: ${jsonResponse.status}`);
+                }
+            } catch (jsonError) {
+                console.log(`Ошибка JSON-запроса к ${instance}: ${jsonError.message}`);
+            }
+
+            // --- Попытка 2: парсинг HTML (если JSON не сработал) ---
+            const htmlUrl = `${instance}/search?q=${encodeURIComponent(query)}`;
+            const htmlResponse = await fetch(htmlUrl, {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
                 }
             });
 
-            if (!response.ok) {
-                console.log(`Сервер ${instance} ответил ошибкой: ${response.status}`);
-                continue;
-            }
-
-            const html = await response.text();
-            const results = parseSearchResults(html);
-            
-            if (results.length > 0) {
-                console.log(`Найдено ${results.length} результатов на сервере ${instance}`);
-                return results;
-            } else {
-                console.log(`Сервер ${instance} не вернул результатов.`);
+            if (htmlResponse.ok) {
+                const html = await htmlResponse.text();
+                const results = parseSearchResults(html);
+                if (results.length > 0) {
+                    console.log(`Найдено ${results.length} результатов через парсинг HTML на ${instance}`);
+                    return results;
+                } else {
+                    console.log(`Сервер ${instance} не вернул результатов в HTML.`);
+                }
             }
         } catch (error) {
-            console.log(`Ошибка при запросе к ${instance}: ${error.message}`);
+            console.log(`Критическая ошибка при работе с ${instance}: ${error.message}`);
         }
     }
     return []; // Ни один сервер не ответил
@@ -115,7 +129,7 @@ app.get('/search', async (req, res) => {
 
     try {
         const results = await searchSearXNG(query);
-        res.json({ results: results.slice(0, 10) }); // Ограничим 10 результатами
+        res.json({ results: results.slice(0, 10) });
     } catch (error) {
         console.error('Ошибка поиска:', error);
         res.status(500).json({ error: 'Не удалось выполнить поиск' });
