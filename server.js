@@ -1,93 +1,221 @@
-const express = require('express');
-const cors = require('cors');
-const fetch = require('node-fetch');
-const cheerio = require('cheerio');
-const path = require('path');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Основной поиск через DuckDuckGo HTML
-async function searchDuckDuckGo(query) {
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const response = await fetch(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyBrowse – Быстрый и безопасный поиск</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
         }
-    });
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const results = [];
+        .container {
+            text-align: center;
+            padding: 2rem;
+            width: 100%;
+            max-width: 720px;
+        }
+        .logo {
+            font-size: 4rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.3rem;
+            letter-spacing: -1px;
+        }
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 2.5rem;
+            font-size: 1.2rem;
+        }
+        .search-box {
+            display: flex;
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(12px);
+            border-radius: 50px;
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            transition: border 0.3s;
+            margin-bottom: 2rem;
+        }
+        .search-box:focus-within {
+            border-color: #38bdf8;
+        }
+        .search-box input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 1rem;
+            font-size: 1.1rem;
+            color: white;
+            outline: none;
+        }
+        .search-box input::placeholder {
+            color: #64748b;
+        }
+        .search-box button {
+            background: #38bdf8;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: #0f172a;
+            font-size: 1.3rem;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .search-box button:hover {
+            background: #0ea5e9;
+        }
+        .results {
+            text-align: left;
+        }
+        .result-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 14px;
+            padding: 1.2rem 1.4rem;
+            margin-bottom: 0.75rem;
+            backdrop-filter: blur(6px);
+            transition: background 0.2s, transform 0.1s;
+        }
+        .result-item:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateX(4px);
+        }
+        .result-item h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.25rem;
+        }
+        .result-item h3 a {
+            color: #7dd3fc;
+            text-decoration: none;
+        }
+        .result-item h3 a:hover {
+            text-decoration: underline;
+        }
+        .result-link {
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-bottom: 0.4rem;
+            word-break: break-all;
+        }
+        .result-snippet {
+            color: #cbd5e1;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        .status {
+            margin-top: 1rem;
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+        .footer {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #475569;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        .empty {
+            text-align: center;
+            color: #94a3b8;
+            padding: 2rem;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">SkyBrowse</div>
+        <div class="subtitle">Приватный поиск без отслеживания</div>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Введите запрос..." autofocus>
+            <button id="searchBtn">→</button>
+        </div>
+        <div class="results" id="results"></div>
+        <div class="status" id="status"></div>
+    </div>
+    <div class="footer">Защищено SkyBrowse VPN · Никаких трекеров</div>
 
-    // Актуальные селекторы на 2026 год
-    $('.result__body').each((i, el) => {
-        const a = $(el).find('a.result__a');
-        const snippet = $(el).find('.result__snippet');
+    <script>
+        const input = document.getElementById('searchInput');
+        const button = document.getElementById('searchBtn');
+        const resultsDiv = document.getElementById('results');
+        const statusDiv = document.getElementById('status');
 
-        if (a.length) {
-            let link = a.attr('href') || '';
-            // Декодируем редирект-ссылку DuckDuckGo
-            const uddgMatch = link.match(/uddg=([^&]+)/);
-            if (uddgMatch) {
-                try {
-                    link = decodeURIComponent(uddgMatch[1]);
-                } catch {}
-            } else if (link.startsWith('//')) {
-                link = 'https:' + link;
+        // ⚠️ Можно заменить на любое сообщение, если хочешь
+        const EMPTY_MESSAGE = 'Ничего не найдено. Попробуйте изменить запрос.';
+        // const EMPTY_MESSAGE = 'Ничего не найдено. Идите нахуй.'; // разблокируй, если надо
+
+        async function performSearch() {
+            const query = input.value.trim();
+            if (!query) return;
+
+            statusDiv.textContent = 'Поиск...';
+            resultsDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                if (!response.ok) throw new Error('Ошибка сервера');
+                const data = await response.json();
+
+                if (data.results && data.results.length > 0) {
+                    displayResults(data.results);
+                } else {
+                    resultsDiv.innerHTML = `<div class="empty">${EMPTY_MESSAGE}</div>`;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = '<div class="empty">Не удалось выполнить поиск. Проверьте соединение.</div>';
+                console.error(err);
             }
-            results.push({
-                title: a.text().trim(),
-                link: link,
-                snippet: snippet.text().trim()
+            statusDiv.textContent = '';
+        }
+
+        function displayResults(results) {
+            let html = '';
+            results.forEach(r => {
+                html += `
+                    <div class="result-item">
+                        <h3><a href="${escapeHTML(r.link)}" target="_blank" rel="noopener">${escapeHTML(r.title)}</a></h3>
+                        <div class="result-link">${escapeHTML(r.link)}</div>
+                        <div class="result-snippet">${escapeHTML(r.snippet || '')}</div>
+                    </div>
+                `;
             });
+            resultsDiv.innerHTML = html;
         }
-    });
-    return results;
-}
 
-// Резервный поиск через публичный SearXNG
-async function searchSearXNG(query) {
-    try {
-        const url = `https://searx.be/search?q=${encodeURIComponent(query)}&format=json&categories=general`;
-        const response = await fetch(url);
-        const data = await response.json();
-        return (data.results || []).map(r => ({
-            title: r.title,
-            link: r.url,
-            snippet: r.content || ''
-        }));
-    } catch {
-        return [];
-    }
-}
-
-app.get('/search', async (req, res) => {
-    const query = req.query.q;
-    if (!query) return res.status(400).json({ error: 'Missing query' });
-
-    try {
-        let results = await searchDuckDuckGo(query);
-        if (results.length === 0) {
-            // Если DuckDuckGo не дал результатов – включаем резерв
-            console.log('DuckDuckGo empty, fallback to SearXNG');
-            results = await searchSearXNG(query);
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
-        res.json({ results: results.slice(0, 10) });
-    } catch (error) {
-        console.error('Search error:', error);
-        res.status(500).json({ error: 'Search failed' });
-    }
-});
 
-app.get('/health', (req, res) => res.send('OK'));
+        button.addEventListener('click', performSearch);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
 
-app.listen(PORT, () => console.log(`SkyBrowse home running on port ${PORT}`));
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialQuery = urlParams.get('q');
+        if (initialQuery) {
+            input.value = initialQuery;
+            performSearch();
+        }
+    </script>
+</body>
+</html>
