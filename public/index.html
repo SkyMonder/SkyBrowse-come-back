@@ -157,6 +157,10 @@
         const resultsDiv = document.getElementById('results');
         const statusDiv = document.getElementById('status');
 
+        // ⚠️ Можно заменить на любое сообщение, если хочешь
+        const EMPTY_MESSAGE = 'Ничего не найдено. Попробуйте изменить запрос.';
+        // const EMPTY_MESSAGE = 'Ничего не найдено. Идите нахуй.'; // разблокируй, если надо
+
         async function performSearch() {
             const query = input.value.trim();
             if (!query) return;
@@ -172,7 +176,7 @@
                 if (data.results && data.results.length > 0) {
                     displayResults(data.results);
                 } else {
-                    resultsDiv.innerHTML = '<div class="empty">Ничего не найдено. Попробуйте изменить запрос.</div>';
+                    resultsDiv.innerHTML = `<div class="empty">${EMPTY_MESSAGE}</div>`;
                 }
             } catch (err) {
                 resultsDiv.innerHTML = '<div class="empty">Не удалось выполнить поиск. Проверьте соединение.</div>';
@@ -206,7 +210,6 @@
             if (e.key === 'Enter') performSearch();
         });
 
-        // Если в URL передан параметр ?q=..., выполнить поиск сразу
         const urlParams = new URLSearchParams(window.location.search);
         const initialQuery = urlParams.get('q');
         if (initialQuery) {
