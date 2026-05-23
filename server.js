@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
-const cheerio = require('cheerio');
 const path = require('path');
 
 const app = express();
@@ -15,76 +14,35 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Основной поиск через DuckDuckGo HTML
-async function searchDuckDuckGo(query) {
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const response = await fetch(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
-        }
-    });
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const results = [];
-
-    // Актуальные селекторы на 2026 год
-    $('.result__body').each((i, el) => {
-        const a = $(el).find('a.result__a');
-        const snippet = $(el).find('.result__snippet');
-
-        if (a.length) {
-            let link = a.attr('href') || '';
-            // Декодируем редирект-ссылку DuckDuckGo
-            const uddgMatch = link.match(/uddg=([^&]+)/);
-            if (uddgMatch) {
-                try {
-                    link = decodeURIComponent(uddgMatch[1]);
-                } catch {}
-            } else if (link.startsWith('//')) {
-                link = 'https:' + link;
-            }
-            results.push({
-                title: a.text().trim(),
-                link: link,
-                snippet: snippet.text().trim()
-            });
-        }
-    });
-    return results;
-}
-
-// Резервный поиск через публичный SearXNG
-async function searchSearXNG(query) {
-    try {
-        const url = `https://searx.be/search?q=${encodeURIComponent(query)}&format=json&categories=general`;
-        const response = await fetch(url);
-        const data = await response.json();
-        return (data.results || []).map(r => ({
-            title: r.title,
-            link: r.url,
-            snippet: r.content || ''
-        }));
-    } catch {
-        return [];
-    }
-}
+// Используем публичный SearXNG (JSON API)
+const SEARXNG_URL = 'https://searx.be/search';
 
 app.get('/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: 'Missing query' });
 
     try {
-        let results = await searchDuckDuckGo(query);
-        if (results.length === 0) {
-            // Если DuckDuckGo не дал результатов – включаем резерв
-            console.log('DuckDuckGo empty, fallback to SearXNG');
-            results = await searchSearXNG(query);
-        }
+        const apiUrl = `${SEARXNG_URL}?q=${encodeURIComponent(query)}&format=json&categories=general`;
+        const response = await fetch(apiUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; SkyBrowse/1.0)'
+            }
+        });
+        if (!response.ok) throw new Error(`SearXNG responded with ${response.status}`);
+        const data = await response.json();
+
+        // Приводим к нужному формату
+        const results = (data.results || []).map(r => ({
+            title: r.title || 'Без названия',
+            link: r.url,
+            snippet: r.content || r.snippet || ''
+        }));
+
         res.json({ results: results.slice(0, 10) });
     } catch (error) {
-        console.error('Search error:', error);
-        res.status(500).json({ error: 'Search failed' });
+        console.error('SearXNG error:', error);
+        // fallback: можно попробовать другой инстанс, но пока вернём ошибку
+        res.status(500).json({ error: 'Поисковый сервис временно недоступен' });
     }
 });
 
