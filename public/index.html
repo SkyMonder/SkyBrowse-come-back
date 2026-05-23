@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyBrowse – Быстрый и безопасный поиск</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        .logo {
+            font-size: 4rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -1px;
+        }
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 2.5rem;
+            font-size: 1.2rem;
+        }
+        .search-box {
+            display: flex;
+            max-width: 600px;
+            margin: 0 auto;
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            transition: border-color 0.3s;
+        }
+        .search-box:focus-within {
+            border-color: #38bdf8;
+        }
+        .search-box input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 1rem;
+            font-size: 1.1rem;
+            color: white;
+            outline: none;
+        }
+        .search-box input::placeholder {
+            color: #64748b;
+        }
+        .search-box button {
+            background: #38bdf8;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.3s;
+            color: #0f172a;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+        .search-box button:hover {
+            background: #0ea5e9;
+        }
+        .results {
+            margin-top: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: left;
+        }
+        .result-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            backdrop-filter: blur(5px);
+        }
+        .result-item a {
+            color: #38bdf8;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .result-item p {
+            color: #cbd5e1;
+            margin-top: 0.25rem;
+            font-size: 0.9rem;
+        }
+        .footer {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #475569;
+            font-size: 0.85rem;
+        }
+        .status {
+            margin-top: 1rem;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">SkyBrowse</div>
+        <div class="subtitle">Приватный поиск без отслеживания</div>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Введите запрос..." autofocus>
+            <button id="searchBtn">→</button>
+        </div>
+        <div class="results" id="results"></div>
+        <div class="status" id="status"></div>
+    </div>
+    <div class="footer">Защищено SkyBrowse VPN · Никаких трекеров</div>
+
+    <script>
+        const input = document.getElementById('searchInput');
+        const button = document.getElementById('searchBtn');
+        const resultsDiv = document.getElementById('results');
+        const statusDiv = document.getElementById('status');
+
+        async function performSearch() {
+            const query = input.value.trim();
+            if (!query) return;
+
+            statusDiv.textContent = 'Поиск...';
+            resultsDiv.innerHTML = '';
+
+            try {
+                // Запрос к нашему прокси-серверу (избегаем CORS)
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                
+                // Если сервер вернул JSON (от DuckDuckGo)
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    displayResults(data);
+                } else {
+                    // Если это редирект на Google (fallback) — показываем ссылку
+                    const html = await response.text();
+                    resultsDiv.innerHTML = `<p>Перенаправление на внешний поиск...</p>`;
+                    window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
+                }
+                statusDiv.textContent = '';
+            } catch (err) {
+                statusDiv.textContent = 'Ошибка соединения. Попробуйте позже.';
+                console.error(err);
+            }
+        }
+
+        function displayResults(data) {
+            if (data.AbstractText) {
+                resultsDiv.innerHTML += `
+                    <div class="result-item">
+                        <strong>${data.Heading || 'Результат'}</strong>
+                        <p>${data.AbstractText}</p>
+                        ${data.AbstractURL ? `<a href="${data.AbstractURL}" target="_blank">Подробнее</a>` : ''}
+                    </div>
+                `;
+            } else if (data.RelatedTopics && data.RelatedTopics.length) {
+                data.RelatedTopics.slice(0, 5).forEach(topic => {
+                    if (topic.Text) {
+                        resultsDiv.innerHTML += `
+                            <div class="result-item">
+                                <a href="${topic.FirstURL || '#'}" target="_blank">${topic.Text}</a>
+                            </div>
+                        `;
+                    }
+                });
+            } else {
+                resultsDiv.innerHTML = '<p>Ничего не найдено. Попробуйте другой запрос.</p>';
+            }
+        }
+
+        button.addEventListener('click', performSearch);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+    </script>
+</body>
+</html>
